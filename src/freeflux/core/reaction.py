@@ -97,7 +97,7 @@ class Reaction():
             stoichiometry = [stoichiometry]
             
         newSubs = pd.DataFrame(
-            {'metab': substrates, 'stoy': np.array(stoichiometry).astype(np.float)}, 
+            {'metab': substrates, 'stoy': np.array(stoichiometry).astype(float)}, 
             index = [sub.id for sub in substrates]
         )    
             
@@ -125,7 +125,7 @@ class Reaction():
             stoichiometry = [stoichiometry]
             
         newPros = pd.DataFrame(
-            {'metab': products, 'stoy': np.array(stoichiometry).astype(np.float)}, 
+            {'metab': products, 'stoy': np.array(stoichiometry).astype(float)}, 
             index = [pro.id for pro in products]
         )    
             
