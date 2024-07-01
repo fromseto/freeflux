@@ -7,7 +7,7 @@ __date__ = '05/19/2022'
 
 import numpy as np
 import pandas as pd
-from scipy.linalg import pinv2
+from scipy.linalg import pinv
 from scipy.optimize import minimize
 try:
     from openopt import NLP
@@ -209,7 +209,7 @@ class MFAModel():
         else:
             vnet_ini = ini_netfluxes
             
-        u_ini = pinv2(self.T@self.N)@vnet_ini
+        u_ini = pinv(self.T@self.N)@vnet_ini
         
         self.x0 = u_ini
         
@@ -531,7 +531,7 @@ class InstMFAModel(MFAModel):
             vnet_ini = np.random.uniform(low = vnet_lb, high = vnet_ub)
         else:
             vnet_ini = ini_netfluxes
-        u_ini = pinv2(self.T@self.N)@vnet_ini
+        u_ini = pinv(self.T@self.N)@vnet_ini
         
         if ini_concs is None:
             c_lb, c_ub = np.array(list(self.model.concentrations_range.values())).T

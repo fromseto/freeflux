@@ -7,7 +7,7 @@ __date__ = '04/14/2022'
 
 import numpy as np
 import pandas as pd
-from scipy.linalg import pinv2
+from scipy.linalg import pinv
 from ..core.mdv import MDV
 from ..analysis.stats import (_chi2_test, _normal_probability, _simulated_vs_measured_MDVs, 
                               _simulated_vs_measured_fluxes, _simulated_vs_measured_inst_MDVs,
@@ -503,7 +503,7 @@ class FitResults():
         '''
         
         if which == 'net':
-            totalFluxesCov = self.null_space@pinv2(self.hessian)@self.null_space.T
+            totalFluxesCov = self.null_space@pinv(self.hessian)@self.null_space.T
             netFluxesCov = self.transform_matrix@totalFluxesCov@self.transform_matrix.T
             irrRxns = self._opt_net_fluxes.index.intersection(
                 self._opt_total_fluxes.index
@@ -519,7 +519,7 @@ class FitResults():
             return pDict(netFluxesRange)       
         
         elif which == 'total':
-            totalFluxesCov = self.null_space@pinv2(self.hessian)@self.null_space.T
+            totalFluxesCov = self.null_space@pinv(self.hessian)@self.null_space.T
             irrRxns = self._opt_total_fluxes.index.tolist()
             totalFluxesRange = _confidence_intervals_le(
                 self._opt_total_fluxes, 
@@ -546,9 +546,9 @@ class FitResults():
             * "total" if total fluxes.
         '''
 
-        freeFluxesCov = pinv2(self.hessian)
-        expMDVsCov = pinv2(self.exp_MDVs_inv_cov)
-        expFluxesCov = pinv2(self.exp_fluxes_inv_cov)
+        freeFluxesCov = pinv(self.hessian)
+        expMDVsCov = pinv(self.exp_MDVs_inv_cov)
+        expFluxesCov = pinv(self.exp_fluxes_inv_cov)
 
         if which == 'net':
             transMat = self.transform_matrix@self.null_space
@@ -599,7 +599,7 @@ class FitResults():
             * "total" if total fluxes.
         '''
 
-        freeFluxesCov = pinv2(self.hessian)
+        freeFluxesCov = pinv(self.hessian)
 
         if which == 'net':
             transMat = self.transform_matrix@self.null_space
@@ -911,7 +911,7 @@ class InstFitResults(FitResults):
         
         if which == 'net':
             fluxHessian = self.hessian[:self.n_free_fluxes,:self.n_free_fluxes]
-            totalFluxesCov = self.null_space@pinv2(fluxHessian)@self.null_space.T
+            totalFluxesCov = self.null_space@pinv(fluxHessian)@self.null_space.T
             netFluxesCov = self.transform_matrix@totalFluxesCov@self.transform_matrix.T
             irrItems = self._opt_net_fluxes.index.intersection(
                 self._opt_total_fluxes.index
@@ -928,7 +928,7 @@ class InstFitResults(FitResults):
         
         elif which == 'total':
             fluxHessian = self.hessian[:self.n_free_fluxes,:self.n_free_fluxes]
-            totalFluxesCov = self.null_space@pinv2(fluxHessian)@self.null_space.T
+            totalFluxesCov = self.null_space@pinv(fluxHessian)@self.null_space.T
             irrItems = self._opt_total_fluxes.index.tolist()
             totalFluxesRange = _confidence_intervals_le(
                 self._opt_total_fluxes, 
@@ -942,7 +942,7 @@ class InstFitResults(FitResults):
         
         elif which == 'conc':
             concHessian = self.hessian[self.n_free_fluxes:, self.n_free_fluxes:]
-            concsCov = pinv2(concHessian)
+            concsCov = pinv(concHessian)
             irrItems = self._opt_concs.index.tolist()
             concsRange = _confidence_intervals_le(
                 self._opt_concs, 
@@ -970,9 +970,9 @@ class InstFitResults(FitResults):
         '''
 
         fluxHessian = self.hessian[:self.n_free_fluxes,:self.n_free_fluxes]
-        freeFluxesCov = pinv2(fluxHessian)
-        expMDVsCov = pinv2(self.exp_inst_MDVs_inv_cov)
-        expFluxesCov = pinv2(self.exp_fluxes_inv_cov)
+        freeFluxesCov = pinv(fluxHessian)
+        expMDVsCov = pinv(self.exp_inst_MDVs_inv_cov)
+        expFluxesCov = pinv(self.exp_fluxes_inv_cov)
 
         if which == 'net':
             transMat = self.transform_matrix@self.null_space
@@ -1024,7 +1024,7 @@ class InstFitResults(FitResults):
         '''
 
         fluxHessian = self.hessian[:self.n_free_fluxes, :self.n_free_fluxes]
-        freeFluxesCov = pinv2(fluxHessian)
+        freeFluxesCov = pinv(fluxHessian)
 
         if which == 'net':
             transMat = self.transform_matrix@self.null_space
