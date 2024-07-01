@@ -202,6 +202,8 @@ class MFAModel():
         '''
         
         if ini_netfluxes is None:
+            # numpy doesn't properly handle RNG states when fork subprocesses
+            np.random.seed()
             vnet_lb, vnet_ub = np.array(list(self.model.net_fluxes_range.values())).T
             vnet_ini = np.random.uniform(low = vnet_lb, high = vnet_ub)
         else:
