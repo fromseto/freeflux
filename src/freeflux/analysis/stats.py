@@ -37,6 +37,7 @@ def _chi2_test(obj_value, dof, confidence_level):
         f' which is {flag}in [{round(chi2Lb, 2)}, {round(chi2Ub, 2)}]'
         f' of the {confidence_level*100}%% confidence level by chi2 test'
     )
+    return obj_value, chi2Lb, chi2Ub, dof
 
 
 def _normal_probability(resids, show_fig, output_dir):

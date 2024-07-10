@@ -431,7 +431,8 @@ class FitResults():
             Confidence level, e.g. 0.95 as 95% confidence level.
         '''
         
-        _chi2_test(self._opt_obj, self.dof, confidence_level)
+        obj_value, chi2Lb, chi2Ub, dof = _chi2_test(self._opt_obj, self.dof, confidence_level)
+        return obj_value, chi2Lb, chi2Ub, dof
         
         
     def plot_normal_probability(self, show_fig = True, output_dir = None):
