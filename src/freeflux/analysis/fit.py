@@ -528,7 +528,8 @@ class Fitter(Optimizer, Simulator):
             solver = 'slsqp', 
             tol = 1e-6, 
             max_iters = 400, 
-            show_progress = True
+            show_progress = True,
+            seed = 42,
     ):
         '''
         Parameters
@@ -559,10 +560,10 @@ class Fitter(Optimizer, Simulator):
         optModel.build_objective()
         optModel.build_gradient()
         optModel.build_flux_bound_constraints()
-        optModel.build_initial_flux_values(ini_netfluxes = iniFluxes)
+        optModel.build_initial_flux_values(ini_netfluxes = iniFluxes, seed=seed)
         
-        with Progress('fitting', silent = not show_progress):
-            res = optModel.solve_flux(tol, max_iters)
+        # with Progress('fitting', silent = not show_progress):
+        res = optModel.solve_flux(tol, max_iters, disp=True)
 
         return FitResults(
             *res[:7], 
