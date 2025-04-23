@@ -4,7 +4,7 @@
 __author__ = 'Chao Wu'
 __date__ = '05/19/2022'
 
-
+# from cyipopt import minimize_ipopt
 import numpy as np
 import pandas as pd
 from scipy.linalg import pinv
@@ -189,7 +189,7 @@ class MFAModel():
 
         if self.solver == 'slsqp':
             self.constrs = {'type': 'ineq', 'fun': lambda u: A@u - b}
-        elif self.solver == 'trust-constr':
+        elif self.solver == 'trust-constr' or self.solver == 'ipopt':
             self.constrs = LinearConstraint(A, b, np.inf)
         elif self.solver == 'ralg':
             self.A = -A
@@ -237,7 +237,7 @@ class MFAModel():
             }
         )
        
-        return res.fun, res.x, res.status in [0, 2]
+        return res.fun, res.x, res.success
 
     def _solve_flux_trust_constr(self, tol, max_iters, disp):
         res = minimize(
@@ -254,6 +254,16 @@ class MFAModel():
             },
         )       
         return res.fun, res.x, res.success
+
+    # def _solve_flux_ipopt(self, tol, max_iters, disp):
+    #     res = minimize_ipopt(
+    #         self.f,
+    #         self.x0,
+    #         jac = self.df,
+    #         constraints = [self.constrs],
+    #         options = {'disp': 5}
+    #     )       
+    #     return res.fun, res.x, res.success
 
 
     def _solve_flux_ralg(self, tol, max_iters, disp):
@@ -340,6 +350,8 @@ class MFAModel():
             opt_obj, opt_u, is_success = self._solve_flux_slsqp(tol, max_iters, disp)
         elif self.solver == 'trust-constr':
             opt_obj, opt_u, is_success = self._solve_flux_trust_constr(tol, max_iters, disp)
+        # elif self.solver == 'ipopt':
+        #     opt_obj, opt_u, is_success = self._solve_flux_ipopt(tol, max_iters, disp)
         elif self.solver == 'ralg':
             opt_obj, opt_u, is_success = self._solve_flux_ralg(tol, max_iters, disp)
         else:
