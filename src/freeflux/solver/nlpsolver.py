@@ -196,7 +196,7 @@ class MFAModel():
             self.b = -b
         
         
-    def build_initial_flux_values(self, ini_netfluxes = None, seed = 42):
+    def build_initial_flux_values(self, ini_netfluxes = None, rng = None):
         '''
         Parameters
         ----------
@@ -205,9 +205,9 @@ class MFAModel():
         '''
         
         if ini_netfluxes is None:
-            rng = np.random.default_rng(seed)
             vnet_lb, vnet_ub = np.array(list(self.model.net_fluxes_range.values())).T
             vnet_ini = rng.uniform(low = vnet_lb, high = vnet_ub)
+            print('debug:', vnet_ini[:10])
         else:
             vnet_ini = ini_netfluxes
             
