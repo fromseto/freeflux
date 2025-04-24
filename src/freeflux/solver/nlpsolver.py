@@ -4,10 +4,10 @@
 __author__ = 'Chao Wu'
 __date__ = '05/19/2022'
 
-
 import numpy as np
 import pandas as pd
 from scipy.linalg import pinv
+from scipy.optimize import LinearConstraint
 from scipy.optimize import minimize
 try:
     from openopt import NLP
@@ -188,12 +188,14 @@ class MFAModel():
 
         if self.solver == 'slsqp':
             self.constrs = {'type': 'ineq', 'fun': lambda u: A@u - b}
+        elif self.solver == 'trust-constr' or self.solver == 'ipopt':
+            self.constrs = LinearConstraint(A, b, np.inf)
         elif self.solver == 'ralg':
             self.A = -A
             self.b = -b
         
         
-    def build_initial_flux_values(self, ini_netfluxes = None):
+    def build_initial_flux_values(self, ini_netfluxes = None, rng = None):
         '''
         Parameters
         ----------
@@ -202,10 +204,8 @@ class MFAModel():
         '''
         
         if ini_netfluxes is None:
-            # numpy doesn't properly handle RNG states when fork subprocesses
-            np.random.seed()
             vnet_lb, vnet_ub = np.array(list(self.model.net_fluxes_range.values())).T
-            vnet_ini = np.random.uniform(low = vnet_lb, high = vnet_ub)
+            vnet_ini = rng.uniform(low = vnet_lb, high = vnet_ub)
         else:
             vnet_ini = ini_netfluxes
             
@@ -235,7 +235,37 @@ class MFAModel():
             }
         )
        
-        return res.fun, res.x, res.status in [0, 2]
+        return res.fun, res.x, res.success
+
+    def _solve_flux_trust_constr(self, tol, max_iters, disp):
+        res = minimize(
+            fun = self.f,
+            x0 = self.x0,
+            method = 'trust-constr',
+            jac = self.df,
+            constraints = [self.constrs],
+            options = {
+                'gtol': tol,
+                'xtol': tol,
+                'barrier_tol': tol,
+                'maxiter': max_iters, 
+                'disp': True,
+                'verbose': 2,
+            },
+        )       
+        return res.fun, res.x, res.success
+
+    # TODO: This solver might be more efficient
+    # # from cyipopt import minimize_ipopt
+    # def _solve_flux_ipopt(self, tol, max_iters, disp):
+    #     res = minimize_ipopt(
+    #         self.f,
+    #         self.x0,
+    #         jac = self.df,
+    #         constraints = [self.constrs],
+    #         options = {'disp': 5}
+    #     )       
+    #     return res.fun, res.x, res.success
 
 
     def _solve_flux_ralg(self, tol, max_iters, disp):
@@ -320,6 +350,10 @@ class MFAModel():
         
         if self.solver == 'slsqp':
             opt_obj, opt_u, is_success = self._solve_flux_slsqp(tol, max_iters, disp)
+        elif self.solver == 'trust-constr':
+            opt_obj, opt_u, is_success = self._solve_flux_trust_constr(tol, max_iters, disp)
+        # elif self.solver == 'ipopt':
+        #     opt_obj, opt_u, is_success = self._solve_flux_ipopt(tol, max_iters, disp)
         elif self.solver == 'ralg':
             opt_obj, opt_u, is_success = self._solve_flux_ralg(tol, max_iters, disp)
         else:
