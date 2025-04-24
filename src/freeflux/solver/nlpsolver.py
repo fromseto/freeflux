@@ -4,7 +4,6 @@
 __author__ = 'Chao Wu'
 __date__ = '05/19/2022'
 
-# from cyipopt import minimize_ipopt
 import numpy as np
 import pandas as pd
 from scipy.linalg import pinv
@@ -207,7 +206,6 @@ class MFAModel():
         if ini_netfluxes is None:
             vnet_lb, vnet_ub = np.array(list(self.model.net_fluxes_range.values())).T
             vnet_ini = rng.uniform(low = vnet_lb, high = vnet_ub)
-            print('debug:', vnet_ini[:10])
         else:
             vnet_ini = ini_netfluxes
             
@@ -247,7 +245,9 @@ class MFAModel():
             jac = self.df,
             constraints = [self.constrs],
             options = {
-                # 'ftol': tol,
+                'gtol': tol,
+                'xtol': tol,
+                'barrier_tol': tol,
                 'maxiter': max_iters, 
                 'disp': True,
                 'verbose': 2,
@@ -255,6 +255,8 @@ class MFAModel():
         )       
         return res.fun, res.x, res.success
 
+    # TODO: This solver might be more efficient
+    # # from cyipopt import minimize_ipopt
     # def _solve_flux_ipopt(self, tol, max_iters, disp):
     #     res = minimize_ipopt(
     #         self.f,

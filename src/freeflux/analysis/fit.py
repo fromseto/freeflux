@@ -536,8 +536,7 @@ class Fitter(Optimizer, Simulator):
         ----------
         fit_measured_fluxes: bool
             Whether to fit measured fluxes.
-        ini_fluxes: ser or file in .tsv or .xlsx
-            Initial values of net fluxes
+        ini_fluxes: lif of initial values of net fluxes
         solver: {"slsqp", "ralg"}
             * If "slsqp", scipy.optimize.minimze will be used.
             * If "ralg", openopt NLP solver will be used.
@@ -557,7 +556,6 @@ class Fitter(Optimizer, Simulator):
         optModel.build_flux_bound_constraints()
         optModel.build_initial_flux_values(ini_netfluxes=ini_fluxes, rng=rng)
         
-        # with Progress('fitting', silent = not show_progress):
         res = optModel.solve_flux(tol, max_iters, disp=True)
 
         return FitResults(
