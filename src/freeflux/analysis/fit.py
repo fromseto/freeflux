@@ -55,6 +55,7 @@ class Fitter(Optimizer, Simulator):
             Standard deviations of measured MDV vector.
         '''
         
+        # TODO: add support for multiple experiments
         self.model.measured_MDVs[fragmentid] = [np.array(mean), np.array(sd)]
         
         if self.contexts:
