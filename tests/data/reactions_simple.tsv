@@ -1,0 +1,3 @@
+#reaction_ID	reactant_IDs(atom)	product_IDs(atom)	reversibility
+v1	A(a)	B(a)	0
+v2	B(a)	C(a)	0

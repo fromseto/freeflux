@@ -5,6 +5,7 @@ __author__ = 'Chao Wu'
 __date__ = '03/30/2022'
 
 
+from collections import OrderedDict # Added import
 from collections.abc import Iterable
 from functools import partial
 from ..core.mdv import MDV
@@ -90,63 +91,67 @@ class Simulator():
     
         
     def set_labeling_strategy(
-            self, 
-            labeled_substrate, 
-            labeling_pattern, 
-            percentage, 
-            purity
+            self,
+            labeled_substrate,
+            labeling_pattern,
+            percentage,
+            purity,
+            experiment_id: str = "exp0"
     ):
         '''
-        Use this method for every substrate tracer.
-        
+        Set the labeling strategy for a given substrate in a specific experiment.
+        Use this method for every substrate tracer for each relevant experiment.
+
         Parameters
         ----------
         labeled_substrate: str
-            Metabolite ID.
+            Metabolite ID of the labeled substrate.
         labeling_pattern: str or list of str
-            Labeling pattern of substrate, '0' for unlabeled atom, '1' for labeled atom, 
-            e.g., '100000' for 1-13C glucose. 
-            
-            List if tracer with multiple labeling patterns are used. 
-            
-            Natural substrate (with all '0's) don't need to be explicitly set.
-            
-            If str, labeling_pattern should not be natural substrate.
+            Labeling pattern(s) of the substrate. '0' for unlabeled atom, '1' for labeled.
+            E.g., '100000' for 1-13C glucose. Provide a list for multiple patterns.
+            Natural substrate (all '0's) doesn't need explicit setting unless overriding.
         percentage: float or list of float
-            Molar percentage (in range of [0,1]) of corresponding tracer. 
-            Sum of percentage should be <= 1, and the rest will be considered as 
-            natural substrate.
-            
-            List if tracer with multiple labeling patterns are used. 
-            
-            * If list, len(percentage) should be equal to len(labeling_pattern).
-            * If float, labeling_pattern should not be natural substrate.
+            Molar percentage(s) (0 to 1) of the corresponding tracer(s).
+            If the sum for an experiment is < 1, the remainder is assumed to be natural abundance.
+            Must match the structure of `labeling_pattern`.
         purity: float or list of float
-            Labeled atom purity (in range of [0,1]) of corresponding tracer.
-            
-            List if tracer with multiple labeling patterns are used.
-
-            * If list, len(purity) should be equal to len(labeling_pattern).
-            * If float, labeling_pattern should not be natural substrate.
+            Labeled atom purity (0 to 1) for each corresponding tracer pattern.
+            Must match the structure of `labeling_pattern`.
+        experiment_id: str, optional
+            The identifier for the experiment to which this labeling strategy applies.
+            Defaults to "exp0", allowing for single-experiment setup or defining a
+            default strategy.
         '''
-    
-        self.model.labeling_strategy[labeled_substrate] = [labeling_pattern, percentage, purity]
+        # Ensure the top-level labeling_strategy is an OrderedDict (Model init should do this)
+        if not isinstance(self.model.labeling_strategy, OrderedDict):
+            self.model.labeling_strategy = OrderedDict()
+
+        # Ensure the entry for the current experiment_id is an OrderedDict
+        if experiment_id not in self.model.labeling_strategy:
+            self.model.labeling_strategy[experiment_id] = OrderedDict()
+
+        self.model.labeling_strategy[experiment_id][labeled_substrate] = [labeling_pattern, percentage, purity]
         
         if self.contexts:
             context = self.contexts[-1]
-            context.add_undo(partial(self._unset_labeling_strategy, labeled_substrate))
+            context.add_undo(partial(self._unset_labeling_strategy, experiment_id, labeled_substrate))
     
         
-    def _unset_labeling_strategy(self, labeled_substrate):
+    def _unset_labeling_strategy(self, experiment_id, labeled_substrate):
         '''
         Parameters
         ----------
+        experiment_id: str
+            The experiment ID from which to remove the substrate's labeling strategy.
         labeled_substrate: str
-            Metabolite ID.
+            Metabolite ID of the substrate whose labeling strategy is to be removed.
         '''
         
-        if labeled_substrate in self.model.labeling_strategy:
-            self.model.labeling_strategy.pop(labeled_substrate)
+        if experiment_id in self.model.labeling_strategy:
+            if labeled_substrate in self.model.labeling_strategy[experiment_id]:
+                self.model.labeling_strategy[experiment_id].pop(labeled_substrate)
+            if not self.model.labeling_strategy[experiment_id]: # If experiment's strategy dict becomes empty
+                self.model.labeling_strategy.pop(experiment_id)
     
     
     def set_flux(self, fluxid, value):

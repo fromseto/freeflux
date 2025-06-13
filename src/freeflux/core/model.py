@@ -125,10 +125,24 @@ class Model():
         which is the derivatives of matrix M w.r.t. variables.
         # of vars = # of free fluxes for steady state MFA;
         # of vars = # of free fluxes + # of concentrations for INST MFA.    
-    labeling_strategy: dict
-        Metabolite ID => [labeling_pattern(s), percentage(s), purity(s)].    
-    measured_MDVs: dict
-        EMU ID (metabolite ID + '_' + atom NOs) => [means of MDV, SDs of MDV].    
+    labeling_strategy: OrderedDict
+        Preferred structure for multi-experiment models:
+        `OrderedDict[str, Dict[str, List]]` which is
+        `experiment_id -> {metabolite_id: [labeling_pattern(s), percentage(s), purity(s)]}`.
+        Example:
+            `OrderedDict([
+                ('exp1', {'Glucose': [['110000', '001100'], [0.5, 0.5], [0.99, 0.99]]}),
+                ('exp2', {'Fructose': [['111111'], [1.0], [0.98]]})
+            ])`
+        For single-experiment models or backward compatibility, if this attribute is set
+        with metabolite IDs as top-level keys (i.e., `Dict[str, List]`), subsequent
+        calculations (e.g., in `Calculator`) will assume a default experiment ID
+        (e.g., 'exp0') and wrap it into the multi-experiment structure internally.
+        Example (old style, implicitly handled under 'exp0'):
+            `{'Glucose': [['110000'], [1.0], [0.99]]}`
+    measured_MDVs: OrderedDict
+        experiment_id -> fragment_id -> [mean, sd]
+        (OrderedDict[str, Dict[str, List[np.ndarray, np.ndarray]]]).
     measured_MDVs_inv_cov: array
         Inversed covariance matrix of measured MDVs with variances on the diagnol, 
         other elements are zero.    
@@ -142,8 +156,9 @@ class Model():
         (# of measured fluxes, # of vars),
         # of vars = # of free fluxes for steady state MFA;
         # of vars = # of free fluxes + # of concentrations for INST MFA.
-    measured_inst_MDVs: dict
-        EMU ID (metabolite ID + '_' + atom NOs) => {timepoint => [means of MDV, SDs of MDV]}.    
+    measured_inst_MDVs: OrderedDict
+        experiment_id -> fragment_id -> timepoint -> [mean, sd]
+        (OrderedDict[str, Dict[str, Dict[float, List[np.ndarray, np.ndarray]]]]).
     measured_inst_MDVs_inv_cov: array
         Inversed covariance matrix of measured concatenated MDVs with variances on the diagnol, 
         other elements are zero. Timepoints are concatenated except t0.     
@@ -184,10 +199,10 @@ class Model():
         self.initial_matrix_Ys_der_p = {}
         self.initial_sim_MDVs = {}
         
-        self.labeling_strategy = {}
-        self.measured_MDVs = {}
+        self.labeling_strategy = OrderedDict()
+        self.measured_MDVs = OrderedDict()
         self.measured_fluxes = {}
-        self.measured_inst_MDVs = {}
+        self.measured_inst_MDVs = OrderedDict()
         self.measured_MDVs_inv_cov = None
         self.measured_inst_MDVs_inv_cov = None
         self.measured_fluxes_inv_cov = None

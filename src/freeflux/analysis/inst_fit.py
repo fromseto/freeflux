@@ -25,9 +25,9 @@ class InstFitter(Fitter, InstSimulator):
     umol/gCDW and timepoints in the unit of s.
     '''
     
-    def set_measured_MDVs(self, fragmentid, timepoints, means, sds):
+    def set_measured_MDVs(self, fragmentid, timepoints, means, sds, experiment_id: str = "exp0"):
         '''
-        Set measured MDVs at various timepoints.
+        Set measured MDVs at various timepoints for a given experiment.
         
         Parameters
         ----------
@@ -39,22 +39,38 @@ class InstFitter(Fitter, InstSimulator):
             Mean of measured MDV(s). len(means) should be equal to len(timepoints).
         sds: array or list of array
             Standard deviation of measured MDV(s). len(sds) should be equal to len(timepoints).
+        experiment_id: str, optional
+            Identifier for the experiment (default is "exp0").
         '''
         
+        if experiment_id not in self.model.measured_inst_MDVs:
+            self.model.measured_inst_MDVs[experiment_id] = {}
+
+        current_exp_data = self.model.measured_inst_MDVs[experiment_id]
+
+        # Ensure timepoints, means, and sds are iterable, even if single values are passed
         if not isinstance(timepoints, Iterable):
-            timepoints = [timepoints]
-            means = [means]
-            sds = [sds]
+            timepoints_iter = [timepoints]
+            means_iter = [means]
+            sds_iter = [sds]
+        else:
+            timepoints_iter = timepoints
+            means_iter = means
+            sds_iter = sds
             
-        for timepoint, mean, sd in zip(timepoints, means, sds):
-            self.model.measured_inst_MDVs.setdefault(fragmentid, {})[timepoint] = [
+        undo_frag_tps_map_for_exp = {fragmentid: []}
+        for timepoint, mean, sd in zip(timepoints_iter, means_iter, sds_iter):
+            current_exp_data.setdefault(fragmentid, {})[timepoint] = [
                 np.array(mean), 
                 np.array(sd)
             ]
+            undo_frag_tps_map_for_exp[fragmentid].append(timepoint)
         
         if self.contexts:
             context = self.contexts[-1]
-            context.add_undo(partial(self._unset_measured_MDVs, {fragmentid: timepoints}))
+            # Pass {experiment_id: {fragmentid: list_of_timepoints_added_in_this_call}}
+            undo_map_for_this_call = {experiment_id: undo_frag_tps_map_for_exp}
+            context.add_undo(partial(self._unset_measured_MDVs, undo_map_for_this_call))
             
     
     def set_measured_MDVs_from_file(self, file):
@@ -64,46 +80,66 @@ class InstFitter(Fitter, InstSimulator):
         Parameters
         ----------
         file: file path
-            Path of tsv or excel file with fields "fragment_ID", "time", "mean" and "sd".
-            "fragment_ID" is metabolite ID + '_' + atom NOs, e.g., 'Glu_12345';
-            "time" is timepoint when MDVs are measured (while some timepoints could be missing);
-            "mean" and "sd" are the mean and standard deviation of MDV with element seperated by ','.
-
+            Path of tsv or excel file. For inst_data=True, expects ("fragment_ID", "time") as
+            multi-index, and columns "mean", "sd". Optionally, an "experiment_id" column can be
+            present. If "experiment_id" is not provided, it defaults to "exp0".
+            "fragment_ID" is metabolite ID + '_' + atom NOs, e.g., 'Glu_12345'.
+            "time" is the timepoint.
+            "mean" and "sd" are comma-separated MDV values.
             Header line starts with "#", and will be skiped.
         '''
         
-        measMDVs = read_measurements_from_file(file, inst_data = True)
+        measMDVs = read_measurements_from_file(file, inst_data = True) # Assumes (fragment_ID, time) index
         
-        fragmentid_tpoints = {}
-        for [emuid, timepoint], [mean, sd] in measMDVs.iterrows():
-            timepoint = float(timepoint)
-            self.model.measured_inst_MDVs.setdefault(emuid, {})[timepoint] = [
-                np.array(list(map(float, mean.split(',')))), 
-                np.array(list(map(float, sd.split(','))))
+        exp_to_frag_tps_map_for_undo = {}
+
+        # Check if 'experiment_id' column exists, if not, assign a default
+        # This assumes 'experiment_id' is a regular column, not part of the index from read_measurements_from_file
+        if 'experiment_id' not in measMDVs.columns:
+            measMDVs['experiment_id'] = 'exp0'
+
+        for (emuid, timepoint_orig), row in measMDVs.iterrows():
+            exp_id = row['experiment_id']
+            mean_str = row['mean']
+            sd_str = row['sd']
+            timepoint = float(timepoint_orig) # Ensure timepoint is float
+
+            if exp_id not in self.model.measured_inst_MDVs:
+                self.model.measured_inst_MDVs[exp_id] = {}
+
+            current_exp_data = self.model.measured_inst_MDVs[exp_id]
+            current_exp_data.setdefault(emuid, {})[timepoint] = [
+                np.array(list(map(float, mean_str.split(',')))),
+                np.array(list(map(float, sd_str.split(','))))
             ]
-            fragmentid_tpoints.setdefault(emuid, []).append(timepoint)
+
+            # Populate map for undo
+            exp_to_frag_tps_map_for_undo.setdefault(exp_id, {}).setdefault(emuid, []).append(timepoint)
             
         if self.contexts:
             context = self.contexts[-1]
-            context.add_undo(partial(self._unset_measured_MDVs, fragmentid_tpoints))
+            context.add_undo(partial(self._unset_measured_MDVs, exp_to_frag_tps_map_for_undo))
     
     
-    def _unset_measured_MDVs(self, fragmentid_tpoints):
+    def _unset_measured_MDVs(self, exp_to_frag_tps_map):
         '''
         Parameters
         ----------
-        fragmentid_tpoints: dict
-            measured MDV ID => list of timepoints.
+        exp_to_frag_tps_map: dict
+            {experiment_id: {fragment_id: [timepoints]}}
         '''
         
-        for fragmentid, timepoints in fragmentid_tpoints.items():
-            if fragmentid in self.model.measured_inst_MDVs:
-                for timepoint in timepoints:
-                    if timepoint in self.model.measured_inst_MDVs[fragmentid]:
-                        self.model.measured_inst_MDVs[fragmentid].pop(timepoint)
-                        
-                if not self.model.measured_inst_MDVs[fragmentid]:
-                    self.model.measured_inst_MDVs.pop(fragmentid)
+        for exp_id, frag_tps_map in exp_to_frag_tps_map.items():
+            if exp_id in self.model.measured_inst_MDVs:
+                for fragmentid, timepoints in frag_tps_map.items():
+                    if fragmentid in self.model.measured_inst_MDVs[exp_id]:
+                        for timepoint in timepoints:
+                            if timepoint in self.model.measured_inst_MDVs[exp_id][fragmentid]:
+                                self.model.measured_inst_MDVs[exp_id][fragmentid].pop(timepoint)
+                        if not self.model.measured_inst_MDVs[exp_id][fragmentid]: # If fragment becomes empty
+                            self.model.measured_inst_MDVs[exp_id].pop(fragmentid)
+                if not self.model.measured_inst_MDVs[exp_id]: # If experiment becomes empty
+                    self.model.measured_inst_MDVs.pop(exp_id)
                     
             
     def set_concentration_bounds(self, metabid, bounds):
@@ -183,14 +219,28 @@ class InstFitter(Fitter, InstSimulator):
         '''
         
         if not self.model.measured_inst_MDVs:
-            raise ValueError('call set_measured_MDV or set_measured_MDVs_from_file first')
+            raise ValueError('call set_measured_MDVs or set_measured_MDVs_from_file first') # Corrected method name in error
         
+        all_fragment_ids = set()
+        for exp_id in self.model.measured_inst_MDVs:
+            all_fragment_ids.update(self.model.measured_inst_MDVs[exp_id].keys())
+
+        if not all_fragment_ids:
+            if self.model.measured_inst_MDVs: # If measured_inst_MDVs was not empty but no fragments were found
+                 raise ValueError('No fragment IDs found in measured_inst_MDVs after processing experiments.')
+            # If measured_inst_MDVs was empty to begin with, this is covered by the first check.
+            # Otherwise, target_EMUs will be an empty list.
+
+        self.model.target_EMUs = list(all_fragment_ids)
+
         if not self.model.EAMs:
             if n_jobs <= 0:
                 raise ValueError('n_jobs should be a positive value')    
             else:
-                self.model.target_EMUs = list(self.model.measured_inst_MDVs.keys())
-                
+                # self.model.target_EMUs is already populated
+                if not self.model.target_EMUs: # if target_EMUs is empty, no need to proceed
+                    return
+
                 metabids = []
                 atom_nos = []
                 for emuid in self.model.target_EMUs:

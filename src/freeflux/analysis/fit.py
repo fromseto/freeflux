@@ -41,9 +41,9 @@ class Fitter(Optimizer, Simulator):
         self.calculator = Calculator(self.model)
         
     
-    def set_measured_MDV(self, fragmentid, mean, sd):
+    def set_measured_MDV(self, fragmentid, mean, sd, experiment_id: str = "exp0"):
         '''
-        Set measured MDV.
+        Set measured MDV for a given experiment.
         
         Parameters
         ----------
@@ -53,14 +53,18 @@ class Fitter(Optimizer, Simulator):
             Means of measured MDV vector.
         sd: array
             Standard deviations of measured MDV vector.
+        experiment_id: str, optional
+            Identifier for the experiment (default is "exp0").
         '''
         
-        # TODO: add support for multiple experiments
-        self.model.measured_MDVs[fragmentid] = [np.array(mean), np.array(sd)]
+        if experiment_id not in self.model.measured_MDVs:
+            self.model.measured_MDVs[experiment_id] = {}
+        self.model.measured_MDVs[experiment_id][fragmentid] = [np.array(mean), np.array(sd)]
         
         if self.contexts:
             context = self.contexts[-1]
-            context.add_undo(partial(self._unset_measured_MDVs, fragmentid))
+            # The _unset_measured_MDVs method now expects experiment_id and a list of fragmentids
+            context.add_undo(partial(self._unset_measured_MDVs, experiment_id, [fragmentid]))
             
             
     def set_measured_MDVs_from_file(self, file):
@@ -70,45 +74,82 @@ class Fitter(Optimizer, Simulator):
         Parameters
         ----------
         file: file path
-            tsv or excel file with fields "fragment_ID", "mean" and "sd". 
-            "fragment_ID" is metabolite ID + "_" + atom NOs, e.g., 'Glu_12345'; 
-            "mean" and "sd" are the mean and standard deviation of MDV with 
-            element seperated by ",".
+            tsv or excel file with fields "fragment_ID", "mean", "sd", and optionally "experiment_id".
+            "fragment_ID" (index) is metabolite ID + "_" + atom NOs, e.g., 'Glu_12345'.
+            "mean" and "sd" are the mean and standard deviation of MDV with elements separated by ",".
+            "experiment_id" (optional column) specifies the experiment for the MDV. If not provided,
+            defaults to "exp0".
 
             Header line starts with "#", and will be skiped.
         '''
         
-        measMDVs = read_measurements_from_file(file)
+        measMDVs = read_measurements_from_file(file) # Assumes this can handle 'experiment_id' if present
 
-        for emuid, [mean, sd] in measMDVs.iterrows():
-            self.model.measured_MDVs[emuid] = [
-                np.array(list(map(float, mean.split(',')))),
-                np.array(list(map(float, sd.split(','))))
+        exp_to_frag_ids_map = {}
+
+        # Check if 'experiment_id' column exists, if not, assign a default
+        if 'experiment_id' not in measMDVs.columns:
+            measMDVs['experiment_id'] = 'exp0'
+
+        for fragment_id, row in measMDVs.iterrows():
+            exp_id = row['experiment_id']
+            mean_str = row['mean']
+            sd_str = row['sd']
+
+            if exp_id not in self.model.measured_MDVs:
+                self.model.measured_MDVs[exp_id] = {}
+
+            self.model.measured_MDVs[exp_id][fragment_id] = [
+                np.array(list(map(float, mean_str.split(',')))),
+                np.array(list(map(float, sd_str.split(','))))
             ]
+            exp_to_frag_ids_map.setdefault(exp_id, []).append(fragment_id)
             
         if self.contexts:
             context = self.contexts[-1]
             context.add_undo(
-                partial(self._unset_measured_MDVs, measMDVs.index.tolist())
+                partial(self._unset_measured_MDVs_from_map, exp_to_frag_ids_map)
             )
         
         
-    def _unset_measured_MDVs(self, fragmentids):
+    def _unset_measured_MDVs(self, experiment_id, fragmentids):
         '''
         Parameters
         ----------
+        experiment_id: str
+            Experiment ID from which to remove fragments.
         fragmentids: str or list of str
-            Measured MDV ID(s).
+            Measured MDV ID(s) to remove from the specified experiment.
         '''
         
-        if not isinstance(fragmentids, Iterable):
-            fragmentids = [fragmentids]
+        if experiment_id in self.model.measured_MDVs:
+            if not isinstance(fragmentids, Iterable) or isinstance(fragmentids, str):
+                fragmentids = [fragmentids]
             
-        for fragmentid in fragmentids:
-            if fragmentid in self.model.measured_MDVs:
-                self.model.measured_MDVs.pop(fragmentid)
+            for fragmentid in fragmentids:
+                if fragmentid in self.model.measured_MDVs[experiment_id]:
+                    self.model.measured_MDVs[experiment_id].pop(fragmentid)
+
+            if not self.model.measured_MDVs[experiment_id]: # If experiment becomes empty, remove it
+                self.model.measured_MDVs.pop(experiment_id)
         
         
+    def _unset_measured_MDVs_from_map(self, exp_to_frag_ids_map):
+        '''
+        Parameters
+        ----------
+        exp_to_frag_ids_map: dict
+            experiment_id -> list of fragment_ids to remove.
+        '''
+        for exp_id, frag_ids in exp_to_frag_ids_map.items():
+            if exp_id in self.model.measured_MDVs:
+                for frag_id in frag_ids:
+                    if frag_id in self.model.measured_MDVs[exp_id]:
+                        self.model.measured_MDVs[exp_id].pop(frag_id)
+                if not self.model.measured_MDVs[exp_id]: # If experiment becomes empty, remove it
+                    self.model.measured_MDVs.pop(exp_id)
+
+
     def set_measured_flux(self, fluxid, mean, sd):
         '''
         Set measured flux.
@@ -262,12 +303,30 @@ class Fitter(Optimizer, Simulator):
         if not self.model.measured_MDVs:
             raise ValueError('call set_measured_MDV or set_measured_MDVs_from_file first')
         
+        all_fragment_ids = set()
+        for exp_id in self.model.measured_MDVs:
+            all_fragment_ids.update(self.model.measured_MDVs[exp_id].keys())
+
+        if not all_fragment_ids: # if measured_MDVs was not empty but no fragments were found
+            if self.model.measured_MDVs:
+                 raise ValueError('No fragment IDs found in measured_MDVs after processing experiments.')
+            # If measured_MDVs was empty to begin with, this is covered by the first check.
+            # If it was populated but resulted in no fragments, this error is raised.
+            # Otherwise, target_EMUs will be an empty list, and EAM decomposition might not run or be empty.
+
+        self.model.target_EMUs = list(all_fragment_ids)
+
         if not self.model.EAMs:
             if n_jobs <= 0:
                 raise ValueError('n_jobs should be a positive value')    
             else:
-                self.model.target_EMUs = list(self.model.measured_MDVs.keys())
-                
+                # self.model.target_EMUs is already populated above correctly
+                if not self.model.target_EMUs: # if target_EMUs is empty, no need to proceed with decomposition
+                    # It's possible that EAMs should be cleared or handled if target_EMUs becomes empty
+                    # after being non-empty, but current logic seems to build EAMs based on current target_EMUs.
+                    # If target_EMUs is empty, _decompose_network in model.py might handle it gracefully (e.g., return empty EAMs).
+                    return # Or handle as appropriate if EAMs must always be non-empty if called
+
                 metabids = []
                 atom_nos = []
                 for emuid in self.model.target_EMUs:
