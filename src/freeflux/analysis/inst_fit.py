@@ -340,6 +340,36 @@ class InstFitter(Fitter, InstSimulator):
         self._estimate_fluxes_range(self.model.unbalanced_metabolites)
         self._set_default_concentration_bounds()
         self._estimate_concentrations_range()
+
+        # --- JAX specific preparations for Instationary ---
+        if hasattr(self.model, 'use_jax_experimental') and self.model.use_jax_experimental:
+            # Ensure JAX is available (copied from Fitter.prepare)
+            try:
+                from ..utils.utils import JAX_INSTALLED as JAX_READY
+            except ImportError:
+                JAX_READY = False
+            if not JAX_READY:
+                raise RuntimeError("JAX features requested for InstFitter but JAX is not installed or not found.")
+
+            # Common JAX prep (already in Fitter.prepare, but if InstFitter.prepare is called directly)
+            self.calculator._lambdify_matrix_As_and_Bs_jax()
+            self.calculator._prepare_substrate_MDVs_jax()
+            self.calculator._prepare_matrix_derivatives_jax() # For A, B derivatives
+
+            # Instationary specific JAX prep
+            self.calculator._lambdify_matrix_Ms_jax()
+            self.calculator._prepare_matrix_Ms_derivatives_p_jax() # After matrix_Ms_der_p (numpy) is computed
+            self.calculator._prepare_initial_conditions_jax() # After initial_matrix_Xs/Ys etc (numpy) are computed
+
+            # Substrate derivatives for 'inst' kind need to be prepared for JAX
+            # This assumes self.model.substrate_MDVs_der_p was populated with 'inst' kind by the numpy path
+            self.calculator._prepare_substrate_MDVs_der_p_jax()
+
+            # For measured_fluxes_der_p_jax with 'inst' kind
+            self.model.jax_flux_derivatives_enabled = True
+            self.calculator._calculate_measured_fluxes_derivative_p('inst') # Ensure JAX version for 'inst' is populated
+
+            self.model.jax_prepared_inst = True # Signal that JAX data for instationary model is ready
     
         
     def _check_dependencies(self, fit_measured_fluxes):
