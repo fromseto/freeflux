@@ -530,6 +530,7 @@ class Fitter(Optimizer, Simulator):
             max_iters = 400, 
             show_progress = True,
             rng = None,
+            use_jax_experimental = False # Added parameter
     ):
         '''
         Parameters
@@ -546,11 +547,18 @@ class Fitter(Optimizer, Simulator):
             Maximum # of iterations.
         show_progress: bool
             Whether to show the progress bar.    
+        use_jax_experimental: bool
+            Whether to attempt using the JAX-based calculation pathway.
         '''
         
         self._check_dependencies(fit_measured_fluxes)
             
-        optModel = MFAModel(self.model, fit_measured_fluxes, solver)
+        # Pass use_jax_experimental to MFAModel constructor
+        optModel = MFAModel(self.model,
+                            fit_measured_fluxes,
+                            solver,
+                            use_jax=use_jax_experimental and hasattr(self.model, 'jax_prepared') and self.model.jax_prepared)
+
         optModel.build_objective()
         optModel.build_gradient()
         optModel.build_flux_bound_constraints()
