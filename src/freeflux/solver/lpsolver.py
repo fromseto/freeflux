@@ -6,7 +6,7 @@ __date__ = '04/15/2022'
 
 
 from pyomo.environ import (ConcreteModel, Var, Objective, Constraint, 
-                           SolverFactory, maximize, minimize, value)
+                           SolverFactory, maximize, minimize, value, quicksum)
                                                    
                            
 class FBAModel():
@@ -32,7 +32,7 @@ class FBAModel():
         self.fluxids = fluxids
         
         def flux_bounds_rule(model, fluxid):
-            return flux_bounds[fluxid]
+            return tuple(flux_bounds[fluxid])
             
         self.model.fluxes = Var(self.fluxids, bounds = flux_bounds_rule)
 
@@ -52,11 +52,10 @@ class FBAModel():
         elif direction == 'min':
             sense = minimize
         
-        def obj_rule(model):
-            objExpr = [coe*model.fluxes[rxnid] for rxnid, coe in objective.items()]
-            return sum(objExpr)
-        
-        self.model.obj = Objective(rule = obj_rule, sense = sense)
+        self.model.obj = Objective(
+            expr = quicksum(coe * self.model.fluxes[rxnid] for rxnid, coe in objective.items()),
+            sense = sense
+        )
         
         
     def build_mass_balance_constraints(self, stoy_mat):
@@ -68,9 +67,9 @@ class FBAModel():
         '''
         
         def mb_rule(model, metabid):
-            fluxesExpr = [stoy_mat.loc[metabid, rxnid]*model.fluxes[rxnid] 
-                          for rxnid in self.fluxids]
-            return sum(fluxesExpr) == 0
+            fluxesExpr = [stoy_mat.loc[metabid, rxnid] * model.fluxes[rxnid] 
+                          for rxnid in self.fluxids if stoy_mat.loc[metabid, rxnid] != 0]
+            return quicksum(fluxesExpr) == 0
             
         self.model.MBcstrs = Constraint(stoy_mat.index.tolist(), rule = mb_rule)
         
@@ -87,16 +86,14 @@ class FBAModel():
             A value in [0, 1].
         '''
         
-        def objcstr_rule(model):
-            objcstrExpr = [coe*model.fluxes[rxnid] for rxnid, coe in objective.items()]
-            return sum(objcstrExpr) >= gamma*max_obj
-            
-        self.model.OBJcstr = Constraint(rule = objcstr_rule)
+        self.model.OBJcstr = Constraint(
+            expr = quicksum(coe * self.model.fluxes[rxnid] for rxnid, coe in objective.items()) >= gamma * max_obj
+        )
         
     
     def remove_objective(self):
         
-        self.model.del_component(self.model.obj)
+        self.model.del_component('obj')
         
         
     def solve_flux(self):
@@ -116,4 +113,3 @@ class FBAModel():
             optFluxes[fluxid] = flux
         
         return optObj, optFluxes
-        
